@@ -76,13 +76,19 @@ class TMviewClient:
 
     # -- Session ----------------------------------------------------------------
 
-    def _pruefe_block(self, r: httpx.Response) -> None:
+    def _pruefe_block(self, r: httpx.Response, erwartet_json: bool = True) -> None:
         ort = str(r.url)
         umleitungen = [str(h.headers.get("location", "")) for h in r.history]
         if "/error/" in ort or "revise" in ort or any("/error/" in u or "revise" in u for u in umleitungen):
             self.blockiert = f"Umleitung auf {ort}"
             raise TMviewBlockiert("TMview hat die Adresse vorübergehend gesperrt (Bot-Schutz, "
                                   f"{self.blockiert}) — später erneut versuchen, Abfragen reduzieren")
+        # Die Startseite ist IMMER HTML und traegt IMMER das Bot-Schutz-Skript des F5-Shape-
+        # Systems (APM_DO_NOT_TOUCH). Das ist der Normalzustand, keine Sperre: die JSON-
+        # Endpunkte antworten trotzdem. Nur wenn ein JSON-Endpunkt HTML zurueckgibt, hat der
+        # Bot-Schutz die Abfrage tatsaechlich abgefangen.
+        if not erwartet_json:
+            return
         ct = r.headers.get("content-type", "")
         if r.status_code == 200 and "html" in ct and ("APM_DO_NOT_TOUCH" in r.text[:2000] or "<html" in r.text[:200].lower()):
             self.blockiert = "JavaScript-Challenge statt JSON"
@@ -95,7 +101,7 @@ class TMviewClient:
         if self._session_ok:
             return
         r = self._http.get(f"{BASE}/")
-        self._pruefe_block(r)
+        self._pruefe_block(r, erwartet_json=False)
         if r.status_code >= 400:
             raise TMviewFehler(f"TMview-Startseite nicht erreichbar ({r.status_code})")
         self._session_ok = True
