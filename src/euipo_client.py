@@ -62,7 +62,9 @@ class EuipoClient:
         env: str | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self.env = (env or os.getenv("EUIPO_ENV") or "sandbox").strip().lower()
+        # Fallback ist bewusst production: eine fehlende Angabe darf nicht still
+        # Sandbox-Daten liefern, die wie ein Registerauszug aussehen.
+        self.env = (env or os.getenv("EUIPO_ENV") or "production").strip().lower()
         if self.env not in _HOSTS:
             raise EuipoFehler(f"EUIPO_ENV muss production oder sandbox sein, nicht {self.env!r}")
         # Sandbox- und Produktivportal sind getrennte Registrierungen mit eigenen Credentials.

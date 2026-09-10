@@ -23,7 +23,12 @@ from tmview_client import TMviewBlockiert, TMviewClient, TMviewFehler, status_to
 from tmview_client import detail_kurz as tmview_detail_kurz, kurz as tmview_kurz  # noqa: E402
 from varianten import bewerte_treffer, bilde_varianten, koelner_phonetik, normalisiere  # noqa: E402
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+# Die .env im Projektverzeichnis ist die einzige Quelle der Wahrheit: override=True,
+# damit ein alter EUIPO_ENV aus der Launcher-Konfiguration (Claude Desktop, MCPProxy,
+# Cherry Studio) sie nicht still überstimmt.
+_ENV_VOR_DOTENV = os.getenv("EUIPO_ENV")
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
+_ENV_AUS_LAUNCHER = (_ENV_VOR_DOTENV or "").strip().lower() or None
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 log = logging.getLogger("marken")
 
@@ -100,8 +105,13 @@ def marken_status() -> dict:
         "umgebung": c.env,
         "api_base": c.api_base,
         "credentials_vorhanden": c.konfiguriert,
+        "umgebung_quelle": ".env",
         "hinweis": None,
     }
+    if _ENV_AUS_LAUNCHER and _ENV_AUS_LAUNCHER != c.env:
+        info["umgebung_quelle"] = (
+            f".env (überstimmt EUIPO_ENV={_ENV_AUS_LAUNCHER!r} aus der Launcher-Konfiguration — "
+            "diesen Eintrag dort löschen)")
     if c.env == "sandbox":
         info["hinweis"] = ("Sandbox: eingefrorener Datenbestand plus Testdaten — Ergebnisse sind "
                            "NICHT registeraktuell und dürfen nicht in einen Aktenvermerk.")
