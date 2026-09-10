@@ -1,126 +1,158 @@
 # mcp-markenrecherche
 
-MCP-Server für die Markenrecherche in Österreich und der EU — gebaut für den Einsatz in der
-Kanzlei mit lokalen oder gehosteten Sprachmodellen (Claude Desktop, Cherry Studio, Msty, MCPProxy).
+**Vorrecherche für Marken mit Wortbestandteil — in der EU und in nationalen Registern, direkt aus dem Chat.**
 
-*An MCP server for trade mark clearance searches in Austria and the EU. It queries the official
-EUIPO APIs (Trademark Search, Goods and Services) and TMview, generates search variants
-deterministically (stems, wildcards, spelling variants, phonetics), deduplicates and scores the
-hits, and hands the model one consolidated result with a search log and explicit gaps. The model
-does the legal assessment; the server never invents a hit. Documentation is in German because the
-target audience is Austrian practitioners.*
+Ein MCP-Server für die Kanzlei: Du sagst deinem Sprachmodell (Claude Desktop, Cherry Studio,
+Msty …), welches Zeichen du für welche Waren oder Dienstleistungen prüfen willst, und bekommst
+eine belegte Trefferliste, einen Klassifizierungsvorschlag und am Ende einen Aktenvermerk.
+Die rechtliche Beurteilung bleibt bei dir. Kein Treffer wird erfunden, jede Lücke wird benannt.
 
-## Grundsatz
+*Pre-filing clearance search for word and word/figurative marks (EUIPO API, TMview, Nice
+classification) as an MCP server. German documentation — the target audience is Austrian and
+German-speaking practitioners.*
 
-Datenbeschaffung deterministisch im Server, Bewertung im Modell. Kein Tool erfindet Treffer; jeder
-Treffer trägt Registernummer, Amt, Quelle und Abrufzeitpunkt. Was nicht abgefragt werden konnte,
-steht als Recherchelücke im Ergebnis — nie stillschweigend weggelassen.
+---
 
-Das Ergebnis ist eine **Vorrecherche**. Sie ersetzt weder die amtliche Ähnlichkeitsrecherche des
-Österreichischen Patentamts noch eine kommerzielle Vollrecherche.
+## Was du bekommst
 
-## Quellen
+**Eine Recherche in einem Satz.** „Prüf mir KIRVO für Software und IT-Beratung in Österreich
+und der EU." Das Modell klassifiziert, lässt den Server die Register abfragen, zieht für die
+kritischen Treffer den Vollauszug und schreibt den Aktenvermerk — mit Ampel je Treffer,
+Suchprotokoll und den offenen Punkten.
 
-| Register | Zugang | Was kommt |
-|---|---|---|
-| Unionsmarken und IR mit EU-Benennung | EUIPO Trademark Search API 1.1.0 (offiziell, OAuth) | Trefferliste, Vollauszug mit Verzeichnis, Status, Fristen |
-| Nizza-Klassifikation / harmonisierte Datenbank | EUIPO Goods and Services API 1.2.0 (offiziell) | Begriffsvorschläge, Validierung „harmonisiert ja/nein", Klassenüberschriften |
-| Nationale Register (AT, DE, CH, …) und WIPO | TMview — interne JSON-Endpunkte der Weboberfläche | Kurzliste, Vollauszug mit Verzeichnis, Inhaber, Vertreter |
+**Belegte Treffer statt Modellwissen.** Jeder Treffer trägt Registernummer, Amt, Inhaber,
+Klassen, Status, Anmeldetag und den Abrufzeitpunkt aus dem Register. Was der Server nicht
+abfragen konnte, steht als Recherchelücke im Ergebnis — nie stillschweigend weggelassen.
 
-**Zu TMview:** Es gibt keine dokumentierte API. Der Server spricht die Endpunkte an, die die
-Weboberfläche selbst benutzt (`/tmview/api/search/results`, `/tmview/api/trademark/detail/{ST13}`,
-Browser-Session nötig). Das kann sich ohne Ankündigung ändern, und die Nutzungsbedingungen von
-tmdn.org sind auf manuelle Nutzung ausgelegt. Deshalb: Rate-Limit (`TMVIEW_PAUSE`, Standard 0,4 s),
-wenige Abfragen je Lauf, und jeder Ausfall wird als Recherchelücke gemeldet. Nutzung auf eigene
-Verantwortung.
+**Varianten, die du händisch nie alle suchen würdest.** Der Server bildet aus dem Zeichen
+Wortstämme, Schreibweisen (C/K, PH/F, Doppelkonsonanten …), Wildcards und lautgleiche
+Wortanfänge und fragt jede Variante ab. Ein Kunstwort wie KIRVO liefert so auch CIRVO, GIRVO
+oder KIRBO, ein zusammengesetztes Zeichen auch die Serienmarken mit demselben Stamm. Die
+Treffer werden nach Schriftbild und Klang sortiert, die ähnlichsten zuerst.
 
-## Tools
+**Klassifizierung gegen die amtliche Datenbank.** „Welche Klassen und Begriffe für ein
+Unternehmen, das Physiotherapie und Trainingsgeräte anbietet?" — das Modell schlägt vor, der
+Server prüft jeden Begriff gegen die harmonisierte Datenbank der EUIPO und sagt, ob er so
+akzeptiert wird oder ein Beanstandungsrisiko trägt.
 
-| Tool | Zweck |
-|---|---|
-| `recherche_lauf` | **Der eigentliche Lauf** über mehrere Register: Varianten bilden, abfragen, deduplizieren, Zeichenähnlichkeit bewerten, eine sortierte Trefferliste plus Suchprotokoll und Recherchelücken. `register` Standard `["EU","AT"]`, optional `"WO"`, `"DE"`, `"CH"` … |
-| `eutm_get` / `tmview_get` | Vollauszug einer EU-Marke bzw. einer nationalen Marke (ST13) inkl. Waren-/Dienstleistungsverzeichnis |
-| `nizza_suggest` / `nizza_validate` / `nizza_klassenueberschriften` | Klassifizierung gegen die harmonisierte Datenbank |
-| `eutm_search` / `tmview_search` / `varianten` | Einzelabfragen und Einblick in die Variantenlogik |
-| `marken_status` | Konfiguration, Umgebung (sandbox/production), Token-Test |
+**Ein Aktenvermerk, der im Akt bestehen kann.** Auftrag, Rechercheumfang, Klassifizierung,
+Trefferübersicht, Bewertung der gelben und roten Treffer nach § 10 MSchG / Art 8 UMV, absolute
+Eintragungshindernisse, Empfehlung, Recherchelücken, Suchprotokoll. Der Systemprompt dafür
+liegt bei (`prompts/systemprompt_beispiel.md`).
 
-Ein passender Systemprompt für den Agenten liegt in `prompts/systemprompt_beispiel.md`
-(Platzhalter für Kanzlei und Anwalt ausfüllen).
+## Was du nicht bekommst
+
+Das ist eine **Vorrecherche**. Sie sagt dir, ob eine amtliche Ähnlichkeitsrecherche oder eine
+kommerzielle Vollrecherche nötig ist — sie ersetzt keine von beiden.
+
+Gefunden wird nur, was einen Wortbestandteil hat. **Reine Bildmarken** und die grafische
+Seite von Wort-Bild-Marken bleiben außen vor. Nicht registrierte Kennzeichenrechte
+(Firmenwortlaut, Domains, Etablissementbezeichnungen) sind nicht abgedeckt. Und die
+nationalen Register laufen über TMview, das nur für gelegentliche Abfragen ausgelegt ist
+(Details unten).
+
+## Typische Fragen an den Agenten
+
+„Welche Nizza-Klassen kommen für ein Unternehmen in Frage, das Mähroboter verkauft und wartet?"
+
+„Prüf das Zeichen SARUMO für Kosmetik und Nahrungsergänzung, Gebiet Österreich und EU."
+
+„Gibt es in Klasse 30 ältere Marken, die wie VANDELIX klingen?"
+
+„Zieh mir den Vollauszug zu 018512783 und sag mir, ob das Verzeichnis mit Software-Wartung
+kollidiert."
+
+„Ist ‚Software-Wartung für Zahnärzte' ein harmonisierter Begriff in Klasse 42?"
+
+Das Modell entscheidet selbst, welche Werkzeuge es dafür braucht. Für eine vollständige
+Recherche ist `recherche_lauf` der Kern; alles andere sind Einzelabfragen und Vollauszüge.
 
 ## Einrichtung
 
-Voraussetzungen: Python ≥ 3.12 und [uv](https://docs.astral.sh/uv/).
+Du brauchst Python ab 3.12, [uv](https://docs.astral.sh/uv/) und einen EUIPO-Zugang.
 
-1. **EUIPO-Zugang.** Auf https://dev.euipo.europa.eu mit dem EUIPO-Konto einloggen, eine App
-   anlegen und die Produkte **Trademark search 1.1.0** und **Goods And Services 1.2.0**
-   abonnieren. „Key" im Portal ist die Client-ID. Die Freischaltung der Subscriptions durch die
-   EUIPO kann Identitätsnachweise erfordern (Pass, Adressnachweis) und dauert; bis dahin antwortet
-   die API mit 403. Für Tests gibt es ein getrenntes Sandbox-Portal
-   (https://dev-sandbox.euipo.europa.eu, eigene App, eigene Keys, eingefrorener Datenbestand).
-2. `.env.example` nach `.env` kopieren und ausfüllen:
+1. **EUIPO-Zugang.** Auf https://dev.euipo.europa.eu mit deinem EUIPO-Konto einloggen, eine
+   App anlegen und die Produkte **Trademark search** und **Goods And Services** abonnieren.
+   „Key" ist die Client-ID. Die EUIPO schaltet die Subscriptions nach Prüfung frei (Pass und
+   Adressnachweis werden verlangt); bis dahin antwortet die API mit 403. Zum Testen gibt es
+   ein eigenes Sandbox-Portal (https://dev-sandbox.euipo.europa.eu) mit eigenen Keys und
+   eingefrorenem Datenbestand — Sandbox-Treffer gehören in keinen Aktenvermerk.
+2. **Konfiguration.** `.env.example` nach `.env` kopieren und Keys eintragen:
 
    ```
-   EUIPO_CLIENT_ID=…              # App im Produktivportal
+   EUIPO_CLIENT_ID=…
    EUIPO_CLIENT_SECRET=…
-   EUIPO_SANDBOX_CLIENT_ID=…      # optional: App im Sandbox-Portal
-   EUIPO_SANDBOX_CLIENT_SECRET=…
-   EUIPO_ENV=production           # oder sandbox
+   EUIPO_ENV=production        # oder sandbox (dann EUIPO_SANDBOX_CLIENT_ID/_SECRET)
    ```
 
-3. Start: `uv --directory /pfad/zu/mcp-markenrecherche run python src/server.py`
-   (uv legt beim ersten Start das `.venv` an). Tests: `uv run --extra dev pytest`.
+3. **Im Chat-Programm eintragen.** Claude Desktop und Cherry Studio nehmen denselben Eintrag
+   (Cherry: „Add Server → Import from JSON"; bei Cherry den absoluten Pfad zu `uv` verwenden,
+   `which uv` zeigt ihn):
 
-### Claude Desktop / Cherry Studio (JSON-Import)
+   ```json
+   {
+     "mcpServers": {
+       "marken": {
+         "command": "uv",
+         "args": ["--directory", "/pfad/zu/mcp-markenrecherche", "run", "python", "src/server.py"]
+       }
+     }
+   }
+   ```
 
-```json
-{
-  "mcpServers": {
-    "marken": {
-      "command": "uv",
-      "args": ["--directory", "/pfad/zu/mcp-markenrecherche", "run", "python", "src/server.py"]
-    }
-  }
-}
-```
+   Beim ersten Start richtet uv die Umgebung selbst ein.
 
-GUI-Apps bekommen auf macOS nicht den PATH der Shell: wenn der Start mit „command not found"
-scheitert, den absoluten Pfad zu `uv` eintragen (`which uv`, z. B. `/opt/homebrew/bin/uv`).
-Umgebungsvariablen sind nicht nötig, die `.env` liegt im Projektordner.
+4. **Systemprompt.** `prompts/systemprompt_beispiel.md` in den Assistenten kopieren, die
+   Platzhalter (Kanzlei, Anwalt, Ich- oder Wir-Form) ausfüllen. Ohne Prompt funktionieren die
+   Werkzeuge auch, aber der Aktenvermerk kommt erst mit ihm in Form.
 
-### MCPProxy
+Erste Probe: „Prüf bitte den Zugang" — das Modell ruft `marken_status` auf und meldet, ob
+EUIPO und TMview erreichbar sind.
 
-Eintrag wie oben; die Tools erscheinen dann als `marken__recherche_lauf` usw. Für einen Agenten
-empfiehlt sich ein eigenes Toolset mit `marken__*`, einem RIS-Tool für Judikatur und einem
-Word-Export — je weniger Tools im Kontext, desto verlässlicher wählt das Modell.
+## Werkzeuge
 
-## Wie der Recherchelauf arbeitet
+| Werkzeug | Was es tut |
+|---|---|
+| `recherche_lauf` | Der vollständige Lauf: Varianten bilden, Register abfragen, deduplizieren, nach Ähnlichkeit sortieren; liefert Trefferliste, Suchprotokoll und Recherchelücken. `register` Standard `["EU","AT"]`, dazu `"WO"`, `"DE"`, `"CH"` … |
+| `eutm_get`, `tmview_get` | Vollauszug einer EU-Marke bzw. einer nationalen Marke mit Waren-/Dienstleistungsverzeichnis, Inhaber, Status, Fristen |
+| `nizza_suggest`, `nizza_validate`, `nizza_klassenueberschriften` | Klassifizierung: Begriffe vorschlagen, gegen die harmonisierte Datenbank prüfen, Klassenüberschriften nachschlagen |
+| `eutm_search`, `tmview_search`, `varianten` | Einzelabfragen und Einblick, welche Varianten der Lauf bildet |
+| `marken_status` | Zugang und Erreichbarkeit prüfen |
 
-Die EUIPO-API kann nur exakt und Wildcard, TMview „enthält", „exakt" und eine eigene unscharfe
-Suche. Phonetik und Schreibvarianten bildet deshalb der Server (`src/varianten.py`): prägende
-Bestandteile ohne kennzeichnungsschwache Zusätze, Wildcards am Wortanfang, Schreibvarianten
-(C/K, PH/F, I/Y, Konsonantenverdopplung …), Konsonantenskelett (`KL*R*X` findet KLARTEXT und
-KLÄR-FIX), bei `umfang="breit"` Vokaltausch. Für „Klarox" sind das neun Suchstrings, für
-„Sonnenblick" siebzehn — ein Tool-Aufruf statt zwanzig.
+## Quellen und ihre Grenzen
 
-Jeder Treffer bekommt einen Ähnlichkeitsscore (0–1) aus Schriftbild (normalisierte
-Editierdistanz), Klang (Kölner Phonetik) und Enthaltensein; bei Mehrwortzeichen zählt der
-Durchschnitt über die Bestandteile. Stufen: hoch ≥ 0,85, mittel ≥ 0,65. Der Score ist eine
-Sortierhilfe, keine Rechtsbewertung.
+**EUIPO** (Unionsmarken und internationale Registrierungen mit EU-Benennung) über die
+offiziellen APIs *Trademark Search* und *Goods and Services*. Stabil, vollständig, mit
+Verzeichnis.
 
-`nur_lebend=True` (Standard) liefert nur Marken, die ein Hindernis sein oder werden können.
-Abgelaufene EU-Marken werden mit dem Hinweis auf die sechsmonatige Verlängerungsnachfrist
-(Art 53 Abs 3 UMV) versehen. IR mit EU-Benennung, die im EU-Teil schon enthalten sind, werden
-bei `"WO"` nicht doppelt gelistet. Fällt die EUIPO-API aus, holt der Lauf die EU-Marken
-ersatzweise über TMview (Amt „EM") und sagt das in den Lücken.
+**TMview** (nationale Register wie AT, DE, CH sowie WIPO) über die Schnittstelle, die die
+TMview-Weboberfläche selbst benutzt. Es gibt dafür keine dokumentierte API; sie kann sich
+ohne Ankündigung ändern, und die Nutzungsbedingungen von tmdn.org sind auf manuelle Nutzung
+ausgelegt. Der Server hält deshalb 1,5 Sekunden Pause zwischen den Anfragen, stellt je Lauf
+nur wenige, und hört beim ersten Anzeichen einer Sperre sofort auf — dann steht das im
+Ergebnis als Lücke, und du prüfst das nationale Register von Hand nach. Zwei, drei Recherchen
+am Tag sind unauffällig; Serienläufe sind es nicht. Nutzung auf eigene Verantwortung.
 
-## Grenzen
+## Wie der Ähnlichkeitsscore zu lesen ist
 
-Nur Wortbestandteile — reine Bildähnlichkeit wird nicht recherchiert. Nicht registrierte
-Kennzeichenrechte (Firmenwortlaut, Domains, Etablissementbezeichnungen) sind nicht abgedeckt.
-TMview-Treffer sind Kurzdaten der Webabfrage; für die Bewertung der Warenähnlichkeit ist der
-Vollauszug (`tmview_get`, `eutm_get`) zu ziehen. Bei sehr häufigen Wortstämmen wertet der Lauf
-je Variante nur `max_pro_variante` Treffer aus und meldet das.
+Jeder Treffer bekommt einen Wert zwischen 0 und 1 aus Schriftbild (Editierdistanz), Klang
+(Kölner Phonetik) und der Frage, ob das eine Zeichen im anderen enthalten ist; bei
+Mehrwortzeichen zählt der Durchschnitt der prägenden Bestandteile. Ab 0,85 gilt ein Treffer
+als „hoch", ab 0,65 als „mittel". Der Wert ist eine Sortierhilfe: Er sagt, wo du zuerst
+hinschaust, nicht, ob Verwechslungsgefahr besteht. Das entscheidet die Bewertung nach Zeichen-
+und Warenähnlichkeit, Kennzeichnungskraft und Publikum — und die machst du.
+
+## Für Entwickler
+
+Python 3.12, FastMCP, httpx. Tests: `uv run --extra dev pytest`. Die Variantenlogik liegt in
+`src/varianten.py`, die Anbindungen in `src/euipo_client.py` und `src/tmview_client.py`, die
+Werkzeuge in `src/server.py`. Statusfilter, Nachfrist bei abgelaufenen Marken (Art 53 Abs 3
+UMV), Deduplizierung von IR mit EU-Benennung und die Erkennung des TMview-Bot-Schutzes sind im
+Code kommentiert. Die Antworten der Werkzeuge sind deutsch beschriftet; die erste Zeile jeder
+Werkzeugbeschreibung trägt ein englisches Stichwort, damit auch englisch angesprochene Modelle
+das richtige Werkzeug finden.
 
 ## Lizenz
 
-MIT — siehe `LICENSE`. Keine Gewähr für Vollständigkeit oder Richtigkeit der Rechercheergebnisse.
+MIT — siehe `LICENSE`. Keine Gewähr für Vollständigkeit oder Richtigkeit der
+Rechercheergebnisse.
